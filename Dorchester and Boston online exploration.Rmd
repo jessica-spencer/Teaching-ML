@@ -1,0 +1,183 @@
+---
+title: "Dorchester and Boston Crime Data"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+1. Scrape Data from online
+2. Exploratory Analysis
+
+
+About the data - Universal Hub, started in 2005, is a community news and information site for the Boston area based on the idea that residents can help keep themselves informed. Combining reports from a pool of hundreds of local bloggers, photographers and tweeters, Universal Hub posts daily news and links, often before the mainstream media, and gives local folks a place to discuss the day's events - and to post news on their own.
+```{r include=FALSE}
+# Load packages
+library(tidyverse)
+require(readr)
+require(dplyr)
+require(ROCR)
+require(rvest)
+```
+
+```{r include=FALSE}
+# Scrape the neighbourhood nodes
+response <- read_html("https://www.universalhub.com/crime/home.html")
+neighborhood <- rvest::html_nodes(x = response,
+                                  xpath = '//div[@class="panel-pane pane-block pane-jump-menu-jump-menu-m-menu-neighborhood-cr"]//option[@class="d-1"]')
+
+## Get the neighbourhood names
+nb_names <- rvest::html_text(neighborhood)
+
+## Get the url of each neighbourhood
+nb_url <- rvest::html_attr(neighborhood, name = "value")
+nb_url <- paste0("https://www.universalhub.com", nb_url)
+
+
+# Write a function to scrape the variables from the url
+scrape_crime <- function(url) {
+  response <- read_html(url)
+  
+  # Type of the crime
+  crime <- rvest::html_nodes(x = response, 
+                            xpath = '//td[contains(@class, "name")]') %>%
+    rvest::html_text(trim = T)
+  # Time of the crime
+  hour <- rvest::html_nodes(x = response, 
+                            xpath = '//span[contains(@class, "date")]') %>%
+    rvest::html_text() %>%
+    lubridate::parse_date_time(orders = "%m/%d/%y - I:M p") %>%
+    lubridate::hour()
+  
+  return(data.frame(crime, hour))
+}
+
+
+# Write a function to extract the url of the next page
+get_next_page <- function(url) {
+  initial_page <- read_html(url)
+  # Extract the url of the next page
+  next_page <- rvest::html_nodes(x = initial_page,
+                                 xpath = '//ul[@class="pager"]//a[@title = "Go to next page"]') %>%
+    html_attr(name = "href")
+  # If there is a next page (the url exists), then return this url
+  # If there is no next page (the url does not exist, then return NA)
+  if (length(next_page) > 0) {
+    next_page <- paste0("https://www.universalhub.com", next_page)
+    return(next_page) 
+  } else {
+    return(NA)
+  }
+}
+
+
+# Write a function to read each page of the neighbourhood
+scrape_each_page <- function(page1_url) {
+  
+  # Scrape the data from page 1
+  crime_data <- scrape_crime(page1_url)
+  
+  # Extract the url of the next page
+  nextpage_url <- get_next_page(page1_url)
+  
+  # While there is a next page, go to the next page and scrape the data
+  while (!is.na(nextpage_url)) {
+    ## Scrape the data
+    nextpage_data <- scrape_crime(nextpage_url)
+    ## Combine the data to the data at the previous page
+    crime_data <- rbind(crime_data, nextpage_data)
+    ## Get the url of another next page
+    nextpage_url <- get_next_page(nextpage_url)
+  }
+  
+  return(crime_data)
+}
+
+
+# Create a tibble to store the results for all the neighbourhoods
+crime_data <- scrape_each_page(nb_url[1]) %>%
+  mutate(neighborhood = nb_names[1])
+for (i in 2:length(nb_url)) {
+  crime_temp <- scrape_each_page(nb_url[i]) %>%
+    mutate(neighborhood = nb_names[i])
+  crime_data <- rbind(crime_data, crime_temp)
+}
+
+
+# Save the data
+#write_csv(crime_data, "dorchester_crime_data.csv")
+
+```
+
+## Clean Data
+
+
+```{r}
+# Clean crime 
+crime_data <- crime_data %>% mutate(crime = tolower(crime)) # make crimes all lowercase
+ 
+shooting_vec <- c("shooting", "shootin", "shoting", "shotting") #all the shooting spellings 
+crime_data$crime <- ifelse(crime_data$crime %in% shooting_vec, "shooting", crime_data$crime) 
+
+```
+
+
+The Top 5 Most Common Crimes in Dorchester, MA
+```{r}
+crime_count <- crime_data %>% 
+  group_by(crime) %>% 
+  summarize (count = n()) %>% 
+  arrange(desc(count))
+top_5_crimes = crime_count %>% slice(1:5)
+top_5_crimes
+
+```
+
+Number of Reported Crimes by Hour
+```{r}
+crimes_by_hour <- crime_data %>% 
+  group_by(hour) %>% 
+  summarize (count = n())
+
+ggplot(crimes_by_hour, aes(x=hour, y=count)) +
+  geom_line(color = "blue", linetype="solid", size =2) + theme_classic() + 
+  labs(title="Total number of reported crimes by hour", x="Hour of the Day", 
+       y = "Total number of reported crimes")
+```
+
+The total number of reported crimes by hour is interestingly U-shaped. There is a drop in the number of crimes reported in the early morning and then steadily increases throughout the day with the most amount of crimes occurring during the hours of 9pm to 11 pm. 
+
+```{r}
+top_5 <- top_5_crimes$crime
+crimes_by_hour_type <- crime_data %>% 
+  group_by(hour, crime) %>% 
+  summarize (count = n()) %>% 
+  filter(crime %in% top_5)
+
+ggplot(crimes_by_hour_type, aes(x=hour, y=count, color = crime)) +
+  geom_line(linetype="solid", size = 1) + theme_classic() + 
+  labs(title="Total number of reported crimes by hour for top 5 crimes in Boston", 
+       x="Hour of the Day", y = "Total number of reported crimes")
+```
+Although the five crimes types are nested together in the daytime, the volume of reported shootings increases after late afternoon and becomes the highest in the evening.
+
+```{r}
+crime_by_hour_neighborhood <- crime_data %>% 
+  group_by(hour, neighborhood) %>% 
+  summarize (count = n()) %>% 
+  filter(neighborhood %in% c("Downtown", "Dorchester"))
+
+ggplot(crime_by_hour_neighborhood , 
+                                  aes(x=hour, y=count, color = neighborhood)) +
+  geom_line(linetype="solid", size = 1) + theme_classic() + 
+  labs(title="Reported Crimes by hour in Dorchester and Downtown Boston", 
+       x="Hour of the Day", y = "Total number of reported crimes")
+```
+There is less reported crime in Downtown Boston than in Dorcester. In the early morning there is a decrease in reported crime in Dorcester and it slowly increase throughout the day peaking at night. In Downtown Boston, crime is reported  most in the late afternoon and then drops in evening.
+
+
+
+
+
