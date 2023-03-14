@@ -1,9 +1,13 @@
-# portfolio
-a place to collect my (public) stats and data science work
+# Teaching DS Kit: Predicting Housing Prices
 
+This is a notebook I used for workshops on the Data Science workflow using Jupyter Notebooks in AWS Sagemaker. It's meant to be an introduction to the capabilities of Machine Learning, and the process involved in solving a machine learning problem. 
+I have presented it for students, interns, company employees who wanted to learn more, business teams assessing Sagemaker's capabilities, among many others.
 
-| Project        | Description | Files | Data         | Techniques | Output | Language | 
-| ------------- |:-------------:|:-------------:| :-------------:| -----:|-------------:|-----------:|
-| Dorchester + Boston Reported Crime Data    | scraping data from a Boston crime reporting website to visualize trends in that data | Dorchester_and_Boston_online_exploration.Rmd and Dorchester_and_Boston_online_exploration.pdf | from UniversalHub | web scraping, visualizations| pdf | R |
-| Teaching DS Kit: Predicting Housing Prices | a notebook I used for workshops on the Data Science workflow |Day1_data_analysis_and_model.ipynb, Day2_data_engineering_and_ML.ipynb| from Kaggle's Ames OH housing prices dataset | exploratory stats, sklearn regression, ML and model evaluation for prediction | Jupyter Notebook | python|
+It involves 
+  - exploratory stats
+  - sklearn linear regression
+  - Machine Learning using linear regression and a random forest 
+  - model evaluation for prediction
+  
+
 
